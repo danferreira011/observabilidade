@@ -9,6 +9,7 @@ from prometheus_client import Info, generate_latest, CONTENT_TYPE_LATEST
 import sys
 import platform
 import random
+from metrics import cart_additionn_total, errors_total, active_sessions_gauge, cpu_usage_gauge, update_cpu_usage, update_active_sessions
 
 app = Flask(__name__,
             static_url_path='',
@@ -171,36 +172,52 @@ def get_or_create_order():
 
 @app.route('/add_to_cart/<int:product_id>', methods=['POST'])
 def add_to_cart(product_id):
-    product = Product.query.get_or_404(product_id)
-    print("Entrou no add_to_cart")
-    order, response = get_or_create_order()
-    quantity = int(request.form.get("quantity"))
 
-    order_item = OrderItem.query.filter_by(order_id=order.id, product_id=product_id).first()
+    try:
 
-    if order_item:
-        order_item.quantity += quantity
-    else:
-        order_item = OrderItem(
-            order_id=order.id,
-            product_id=product.id,
-            quantity=quantity,
-            price=product.price
-        )
-        db.session.add(order_item)
+        product = Product.query.get_or_404(product_id)
+        print("Entrou no add_to_cart")
+        order, response = get_or_create_order()
+        quantity = int(request.form.get("quantity"))
 
-    db.session.commit()
+        order_item = OrderItem.query.filter_by(order_id=order.id, product_id=product_id).first()
 
-    flash(f'{product.name} adicionado ao carrinho!', 'success')
+        if order_item:
+            order_item.quantity += quantity
+        else:
+            order_item = OrderItem(
+                order_id=order.id,
+                product_id=product.id,
+                quantity=quantity,
+                price=product.price
+            )
+            db.session.add(order_item)
 
-    redirect_response = make_response(redirect(url_for('detail', product_id=product.id)))
+        db.session.commit()
 
-    if response:
-        for cookie_key, cookie_value in response.headers.items():
-            if cookie_key.startswith("Set-Cookie"):
-                redirect_response.headers.add(cookie_key, cookie_value)
+        # Incrementa o contador de adições ao carrinho para o produto específico
+        cart_additionn_total.labels(product_id=product_id).inc(quantity)
 
-    return redirect_response
+        flash(f'{product.name} adicionado ao carrinho!', 'success')
+
+        redirect_response = make_response(redirect(url_for('detail', product_id=product.id)))
+
+        if response:
+            for cookie_key, cookie_value in response.headers.items():
+                if cookie_key.startswith("Set-Cookie"):
+                    redirect_response.headers.add(cookie_key, cookie_value)
+
+        return redirect_response
+
+    except Exception as e:
+        print(f"Erro ao adicionar ao carrinho: {e}")
+        errors_total.labels(
+            error_type=str(type(e)),
+            endpoint=request.path,
+            status_code=500
+        ).inc()
+        flash('Ocorreu um erro ao adicionar o produto ao carrinho. Por favor, tente novamente.', 'danger')
+        return redirect(url_for('shop'))
 
 @app.route('/detail/<int:product_id>')
 def detail(product_id):
@@ -277,4 +294,10 @@ if __name__ == '__main__':
 
 @app.route('/metrics')
 def metrics():
+    try:
+        update_cpu_usage()
+        update_active_sessions()
+        print("Métricas atualizadas com sucesso.")
+    except Exception as e:
+        print(f"Erro ao atualizar métricas: {e}")
     return generate_latest(), 200, {'Content-Type': CONTENT_TYPE_LATEST}    
