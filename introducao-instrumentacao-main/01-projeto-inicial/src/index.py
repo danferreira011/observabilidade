@@ -9,7 +9,8 @@ from prometheus_client import Info, generate_latest, CONTENT_TYPE_LATEST
 import sys
 import platform
 import random
-from metrics import cart_additionn_total, errors_total, active_sessions_gauge, cpu_usage_gauge, update_cpu_usage, update_active_sessions
+import time
+from metrics import request_duration_histogram, cart_additionn_total, errors_total, active_sessions_gauge, cpu_usage_gauge, update_cpu_usage, update_active_sessions
 
 app = Flask(__name__,
             static_url_path='',
@@ -285,7 +286,10 @@ def remove_item(item_id):
 
 @app.route('/')
 def index():
+    start_time = time.time()
     products = Product.query.all()
+    duration = time.time() - start_time
+    request_duration_histogram.labels(method='GET', endpoint='/', status_code=200).observe(duration)
     return render_template('index.html', products=products)
 
 if __name__ == '__main__':

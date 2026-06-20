@@ -1,4 +1,4 @@
-from prometheus_client import Counter,Gauge
+from prometheus_client import Counter,Gauge, Histogram
 import psutil
 import threading
 
@@ -40,3 +40,10 @@ def update_active_sessions():
         print(f"Número de sessões ativas: {active_count}")  
     except Exception as e:
         print(f"Erro ao obter número de sessões ativas: {e}")
+
+request_duration_histogram = Histogram(
+    'ecommerce_request_duration_seconds',
+    'Duração das requisições em segundos',
+    ['method', 'endpoint', 'status_code'],
+    buckets=[0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10]
+)
